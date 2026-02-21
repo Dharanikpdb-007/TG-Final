@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react'
 import { BrowserRouter as Router, Routes, Route, Navigate, Outlet } from 'react-router-dom'
 import { AuthProvider, useAuth } from './contexts/AuthContext'
 import { NotificationProvider } from './contexts/NotificationContext'
+import { GeofenceProvider } from './contexts/GeofenceContext'
 import './App.css'
 
 // Pages
@@ -151,7 +152,9 @@ function App() {
   return (
     <AuthProvider>
       <NotificationProvider>
-        <AppContent />
+        <GeofenceProvider>
+          <AppContent />
+        </GeofenceProvider>
       </NotificationProvider>
     </AuthProvider>
   )

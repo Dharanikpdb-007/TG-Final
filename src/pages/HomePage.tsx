@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import { useAuth } from '../contexts/AuthContext'
 import { supabase } from '../lib/supabase'
 import SOSButton from '../components/SOSButton'
@@ -8,6 +8,7 @@ import { Shield, User, MapPin, AlertTriangle, X, FileText, MessageSquare, Radar,
 import L from 'leaflet'
 import { QRCodeCanvas } from 'qrcode.react'
 import { useLanguage } from '../contexts/LanguageContext'
+import { getCurrentPosition, watchPosition } from '../utils/geolocation'
 import './HomePage.css'
 
 export default function HomePage() {
@@ -18,13 +19,23 @@ export default function HomePage() {
     const [showQRModal, setShowQRModal] = useState(false)
 
     // Location & Risk State
+    // Restore last known city name instantly from cache so UI never shows raw coords
     const [currentLocation, setCurrentLocation] = useState<{ lat: number, lng: number } | null>(null)
-    const [locationName, setLocationName] = useState('Locating...')
+    const [locationName, setLocationName] = useState<string>(() => {
+        const cached = localStorage.getItem('tg_last_location_name') || ''
+        // Reject stale entries that are raw coordinates (e.g. "13.0584, 80.2080")
+        if (cached && !/^\d/.test(cached)) return cached
+        return 'Locating...'
+    })
     const [riskLevel, setRiskLevel] = useState<'Low' | 'Medium' | 'High'>('Low')
     const [riskMessage, setRiskMessage] = useState("You're Safe")
-    const [isLocationActive, setIsLocationActive] = useState(false)
+    const [isLocationActive, setIsLocationActive] = useState(() => {
+        const cached = localStorage.getItem('tg_last_location_name') || ''
+        return !!cached && !/^\d/.test(cached)
+    })
     const [safetyScore, setSafetyScore] = useState(87.5)
     const [nearbyZoneName, setNearbyZoneName] = useState('')
+    const lastGeocodedRef = useRef<{ lat: number; lng: number } | null>(null)
 
     // Live Statistics State
     const [nearbyTouristsCount, setNearbyTouristsCount] = useState(0)
@@ -114,40 +125,82 @@ export default function HomePage() {
         }
     }, [showQRModal, user?.id])
 
+    // Reverse geocode helper — only re-fetches when user moves >200 m
+    const reverseGeocode = async (lat: number, lng: number) => {
+        // Skip duplicate calls for tiny movements
+        if (lastGeocodedRef.current) {
+            const dx = lat - lastGeocodedRef.current.lat
+            const dy = lng - lastGeocodedRef.current.lng
+            const distDeg = Math.sqrt(dx * dx + dy * dy)
+            if (distDeg < 0.002) return // ~200 m
+        }
+        lastGeocodedRef.current = { lat, lng } // mark before async to prevent duplicates
+
+        try {
+            const res = await fetch(
+                `https://nominatim.openstreetmap.org/reverse?lat=${lat}&lon=${lng}&format=json`,
+                { headers: { 'Accept-Language': 'en' } }
+            )
+            const data = await res.json()
+            // Indian addresses often use state_district/city_district instead of city
+            const place =
+                data.address?.city ||
+                data.address?.town ||
+                data.address?.city_district ||
+                data.address?.state_district ||
+                data.address?.village ||
+                data.address?.suburb ||
+                data.address?.neighbourhood ||
+                data.address?.county ||
+                data.address?.state ||
+                ''
+            const country = data.address?.country || ''
+            if (place) {
+                const name = `${place}, ${country}`
+                setLocationName(name)
+                try { localStorage.setItem('tg_last_location_name', name) } catch { /* ignore */ }
+            }
+        } catch {
+            // Network error — keep showing the cached / loading name, never show coords
+        }
+    }
+
     // Watch location and calculate risk
     useEffect(() => {
-        if (!navigator.geolocation) {
-            setIsLocationActive(false)
-            return
-        }
+        let cleanupFn: (() => void) | null = null
 
-        const watchId = navigator.geolocation.watchPosition(
-            async (position) => {
-                const { latitude, longitude } = position.coords
+        // ① Fast first fix: low-accuracy, accepts cached positions
+        getCurrentPosition(
+            { enableHighAccuracy: false, maximumAge: 120_000, timeout: 5_000 }
+        ).then(async (pos) => {
+            const { latitude, longitude } = pos.coords
+            setCurrentLocation({ lat: latitude, lng: longitude })
+            setIsLocationActive(true)
+            await reverseGeocode(latitude, longitude)
+            await checkRiskLevel(latitude, longitude)
+        }).catch(() => { /* silent — watch below handles errors */ })
+
+        // ② High-accuracy watch — continuous tracking
+        watchPosition(
+            async (pos) => {
+                const { latitude, longitude } = pos.coords
                 setCurrentLocation({ lat: latitude, lng: longitude })
                 setIsLocationActive(true)
-
-                // Reverse geocode
-                try {
-                    const res = await fetch(`https://nominatim.openstreetmap.org/reverse?lat=${latitude}&lon=${longitude}&format=json`)
-                    const data = await res.json()
-                    const city = data.address?.city || data.address?.town || data.address?.village || data.address?.county || ''
-                    const country = data.address?.country || ''
-                    setLocationName(city ? `${city}, ${country}` : `${latitude.toFixed(4)}, ${longitude.toFixed(4)}`)
-                } catch {
-                    setLocationName(`${latitude.toFixed(4)}, ${longitude.toFixed(4)}`)
-                }
-
+                await reverseGeocode(latitude, longitude)
                 await checkRiskLevel(latitude, longitude)
             },
             (err) => {
                 console.error(err)
-                setIsLocationActive(false)
+                if (!localStorage.getItem('tg_last_location_name')) {
+                    setIsLocationActive(false)
+                }
             },
-            { enableHighAccuracy: true }
-        )
+            { enableHighAccuracy: true, timeout: 20_000, maximumAge: 10_000 }
+        ).then((stop) => {
+            cleanupFn = stop
+        })
 
-        return () => navigator.geolocation.clearWatch(watchId)
+        return () => { cleanupFn?.() }
     }, [user?.id])
 
     const loadUserProfile = async () => {
@@ -271,7 +324,9 @@ export default function HomePage() {
                 </div>
                 <div className="location-status-body">
                     <div className="location-details">
-                        <span className="location-city">{locationName}</span>
+                        <span className={`location-city${locationName === 'Locating...' ? ' locating' : ''}`}>
+                            {locationName}
+                        </span>
                         <span className="location-zone-info">
                             {nearbyZoneName ? nearbyZoneName : (isLocationActive ? 'Safe Tourist Zone' : 'Location not active')}
                             {isLocationActive && ' • Well-lit area'}

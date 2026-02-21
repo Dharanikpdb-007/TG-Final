@@ -155,6 +155,25 @@
     color: #f3f4f6;
 }
 
+/* Pulsing shimmer while showing "Locating..." */
+.location-city.locating {
+    color: #9ca3af;
+    animation: locating-pulse 1.5s ease-in-out infinite;
+}
+
+@keyframes locating-pulse {
+
+    0%,
+    100% {
+        opacity: 1;
+    }
+
+    50% {
+        opacity: 0.45;
+    }
+}
+
+
 .location-zone-info {
     font-size: 0.8rem;
     color: #10b981;

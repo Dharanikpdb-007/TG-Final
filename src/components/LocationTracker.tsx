@@ -1,6 +1,7 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useState, useRef } from 'react'
 import { supabase } from '../lib/supabase'
 import { useNotification } from '../contexts/NotificationContext'
+import { watchPosition } from '../utils/geolocation'
 
 interface LocationTrackerProps {
   userId?: string
@@ -25,9 +26,9 @@ export default function LocationTracker({ userId }: LocationTrackerProps) {
     if (!internalUserId) return
 
     // Auto-start tracking if permission exists
-    if (!navigator.geolocation) return
+    let cleanupFn: (() => void) | null = null
 
-    const watchId = navigator.geolocation.watchPosition(
+    watchPosition(
       async (position) => {
         const { latitude, longitude } = position.coords
         const timestamp = new Date().toISOString()
@@ -81,11 +82,6 @@ export default function LocationTracker({ userId }: LocationTrackerProps) {
 
           // 2. Red Zone Check (Context-Aware)
           if (featureConfig.context) {
-            // Fetch dangerous incidents nearby (mock or real)
-            // For efficiency, we only check this every few minutes or use cached zones
-            // Here we simulate a check against "High Scrutiny Areas"
-
-            // Mock Red Zone check: In a real app, fetch from DB
             const inRedZone = await checkIfInRedZone(latitude, longitude)
 
             if (inRedZone) {
@@ -120,8 +116,6 @@ export default function LocationTracker({ userId }: LocationTrackerProps) {
         }
         // --- END AI LOGIC ---
 
-        // --- END AI LOGIC ---
-
         try {
           await supabase
             .from('users')
@@ -143,10 +137,12 @@ export default function LocationTracker({ userId }: LocationTrackerProps) {
         timeout: 10000,
         maximumAge: 0,
       }
-    )
+    ).then((stop) => {
+      cleanupFn = stop
+    })
 
     return () => {
-      navigator.geolocation.clearWatch(watchId)
+      cleanupFn?.()
     }
   }, [internalUserId])
 

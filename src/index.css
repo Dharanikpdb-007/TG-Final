@@ -19,7 +19,10 @@ code {
     monospace;
 }
 
-input, textarea, select, button {
+input,
+textarea,
+select,
+button {
   font: inherit;
 }
 
@@ -53,4 +56,109 @@ a {
 
 .p-4 {
   padding: 24px;
+}
+
+/* ── Global Danger-Zone Alert Modal (rendered by GeofenceProvider) ── */
+.custom-alert-overlay {
+  position: fixed;
+  inset: 0;
+  background-color: rgba(0, 0, 0, 0.6);
+  z-index: 99998;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  animation: gf-fadeIn 0.3s ease;
+}
+
+.custom-alert-card {
+  width: 85%;
+  max-width: 340px;
+  padding: 32px 28px;
+  border-radius: 20px;
+  text-align: center;
+  box-shadow: 0 12px 48px rgba(0, 0, 0, 0.85);
+  animation: gf-popIn 0.35s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+}
+
+.custom-alert-card.danger {
+  background: linear-gradient(135deg, #7f1d1d 0%, #ef4444 100%);
+  border: 2px solid #fecaca;
+  color: white;
+}
+
+.custom-alert-card.medium {
+  background: linear-gradient(135deg, #c2410c 0%, #f97316 100%);
+  border: 2px solid #fed7aa;
+  color: white;
+}
+
+.alert-icon-wrapper {
+  background: rgba(255, 255, 255, 0.22);
+  width: 64px;
+  height: 64px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  margin: 0 auto 18px;
+}
+
+.custom-alert-card h3 {
+  font-size: 1.3rem;
+  font-weight: 800;
+  margin-bottom: 10px;
+  text-transform: uppercase;
+  letter-spacing: 1.5px;
+}
+
+.custom-alert-card p {
+  font-size: 1rem;
+  margin-bottom: 26px;
+  opacity: 0.92;
+  line-height: 1.55;
+}
+
+.btn-dismiss {
+  background: white;
+  color: #111;
+  border: none;
+  padding: 13px 26px;
+  border-radius: 30px;
+  font-size: 1rem;
+  font-weight: 700;
+  cursor: pointer;
+  width: 100%;
+  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.25);
+  transition: transform 0.15s, box-shadow 0.15s;
+}
+
+.btn-dismiss:hover {
+  transform: translateY(-1px);
+  box-shadow: 0 6px 20px rgba(0, 0, 0, 0.3);
+}
+
+.btn-dismiss:active {
+  transform: scale(0.96);
+}
+
+@keyframes gf-fadeIn {
+  from {
+    opacity: 0;
+  }
+
+  to {
+    opacity: 1;
+  }
+}
+
+@keyframes gf-popIn {
+  from {
+    transform: scale(0.75);
+    opacity: 0;
+  }
+
+  to {
+    transform: scale(1);
+    opacity: 1;
+  }
 }

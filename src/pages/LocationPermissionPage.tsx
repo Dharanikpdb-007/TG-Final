@@ -1,5 +1,6 @@
 import { MapPin, Shield, AlertTriangle } from 'lucide-react'
 import { useNotification } from '../contexts/NotificationContext'
+import { requestLocationPermission, getCurrentPosition } from '../utils/geolocation'
 import './LocationPermissionPage.css'
 
 interface LocationPermissionPageProps {
@@ -10,22 +11,27 @@ interface LocationPermissionPageProps {
 export default function LocationPermissionPage({ onPermissionGranted, onSkip }: LocationPermissionPageProps) {
     const { showNotification } = useNotification()
 
-    const handleEnableLocation = () => {
-        if ('geolocation' in navigator) {
-            navigator.geolocation.getCurrentPosition(
-                (position) => {
-                    console.log('Location granted:', position.coords)
-                    onPermissionGranted()
-                },
-                (error) => {
-                    console.error('Location error:', error)
-                    if (error.code === error.PERMISSION_DENIED) {
-                        showNotification('Please enable location services in your browser settings to use this feature.', 'error')
-                    }
-                }
-            )
-        } else {
-            showNotification('Geolocation is not supported by your browser.', 'error')
+    const handleEnableLocation = async () => {
+        try {
+            // On native mobile: triggers OS permission dialog
+            // On web: triggers browser permission bar
+            const granted = await requestLocationPermission()
+
+            if (!granted) {
+                showNotification('Please enable location services in your device settings to use this feature.', 'error')
+                return
+            }
+
+            // Get an initial position to confirm it works
+            await getCurrentPosition({ enableHighAccuracy: true, timeout: 10_000 })
+            onPermissionGranted()
+        } catch (error: any) {
+            console.error('Location error:', error)
+            if (error?.code === 1) {
+                showNotification('Please enable location services in your device settings to use this feature.', 'error')
+            } else {
+                showNotification('Could not get your location. Please try again.', 'error')
+            }
         }
     }
 
